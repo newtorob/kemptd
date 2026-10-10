@@ -43,7 +43,8 @@ def test_low_confidence_is_skipped() -> None:
         [_entry(Path("/src/x.mkv"), "X", confidence=Confidence.LOW)], root=Path("/lib")
     )
     assert plan.moves == ()
-    assert plan.skips[0].reason == "match not actionable"
+    assert plan.skips[0].action is PlanAction.SKIP
+    assert plan.skips[0].confidence is Confidence.LOW
 
 
 def test_untemplatable_entry_is_skipped_with_reason() -> None:

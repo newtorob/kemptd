@@ -57,9 +57,8 @@ def build_plan(entries: Iterable[tuple[Path, MatchResult]], *, root: Path) -> Pl
     items: list[PlanItem] = []
     for source, match in entries:
         if not match.is_actionable:
-            items.append(
-                PlanItem(source, None, PlanAction.SKIP, match.confidence, "match not actionable")
-            )
+            # Preserve the real cause (low score, provider error, unparsable, …).
+            items.append(PlanItem(source, None, PlanAction.SKIP, match.confidence, match.rationale))
             continue
         try:
             destination = root / relative_path(match, source.suffix)

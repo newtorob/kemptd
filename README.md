@@ -57,16 +57,25 @@ pip install -e ".[dev]"
 ## Usage
 
 ```console
-kemptd parse PATH          # show what kemptd understands (no changes)
-kemptd scan  PATH          # match + emit a plan            (next release)
-kemptd apply PLAN          # execute a reviewed plan        (next release)
-kemptd undo  JOURNAL       # reverse the last apply         (next release)
+export KEMPTD_TMDB_API_KEY=...            # free key: https://www.themoviedb.org/settings/api
+
+kemptd scan  PATH                          # dry-run: parse → match → print the plan
+kemptd scan  PATH --plan-out plan.json     # save the plan to review
+kemptd apply plan.json                     # execute a reviewed plan (writes an undo journal)
+kemptd undo  plan.journal.json             # reverse it
+kemptd scan  PATH --apply                  # scan and execute in one step
+
+kemptd parse PATH                          # just show what kemptd parsed (no matching)
 ```
+
+Only `HIGH`-confidence, cleanly-templatable matches become moves; everything else
+is reported as a skip with a reason, so a bad guess never silently reorganizes a file.
 
 ## Status
 
-Early alpha. The pure core (parse + match) and the `parse` command are implemented
-and tested; providers, planning, and apply are landing next.
+Alpha, but **end-to-end usable**: `scan` / `apply` / `undo` all work against TMDb,
+with dry-run by default and a reversible journal. Next up: TVDB/AniDB providers for
+anime absolute-numbering.
 
 ## License
 
