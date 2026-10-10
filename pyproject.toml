@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kemptd"
+version = "0.1.0"
+description = "Tidy, provider-backed media library organizer: scan, match, plan, apply — safely."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Rob" }]
+keywords = ["media", "library", "rename", "organizer", "tv", "movies", "jellyfin", "plex"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "guessit>=3.8",
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.urls]
+Homepage = "https://github.com/newtorob/kemptd"
+Repository = "https://github.com/newtorob/kemptd"
+Issues = "https://github.com/newtorob/kemptd/issues"
+
+[project.scripts]
+kemptd = "kemptd.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "pre-commit>=3.7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kemptd"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pyflakes / pycodestyle
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "SIM",           # simplify
+    "RUF",           # ruff-specific
+    "PTH",           # prefer pathlib
+    "TID",           # tidy imports
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["kemptd"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+disallow_untyped_defs = true
+enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["guessit.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["kemptd"]
