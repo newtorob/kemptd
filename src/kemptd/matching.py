@@ -35,6 +35,51 @@ _YEAR_PENALTY = 0.15
 _NOISE = re.compile(r"\b(tv series|complete|collection|the)\b", re.IGNORECASE)
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
+# Release-name cleanup: guessit sometimes truncates titles (drops "Part III",
+# a trailing "Us", …), which makes a shorter wrong candidate score a perfect
+# match. Recovering the fuller "pre-boundary" title from the raw name fixes that.
+_SITE_PREFIX = re.compile(r"^\s*www[\s.]\S*?\s*-\s*", re.IGNORECASE)
+_TITLE_BOUNDARY = re.compile(
+    r"\b(s\d{1,2}e\d{1,3}|s\d{1,2}|season\s*\d+|19\d{2}|20\d{2}|1080p|720p|2160p|480p|4k"
+    r"|web[\s.-]?rip|web[\s.-]?dl|blu[\s.-]?ray|br[\s.-]?rip|hdtv|dvdrip|x264|x265|h\s?26[45]"
+    r"|hevc|aac|ddp?5|10bit|unrated|internal|repack|proper|remux|complete)\b",
+    re.IGNORECASE,
+)
+
+
+def _full_title(raw: str) -> str:
+    """Recover a fuller title from a raw release name than guessit may expose.
+
+    Strips a scene-site prefix, folds separators, and cuts at the first release
+    marker (season/episode, year, quality, codec). Best-effort: returns "" when
+    nothing usable remains.
+    """
+    stem = raw.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    stem = _SITE_PREFIX.sub("", stem).replace(".", " ").replace("_", " ")
+    boundary = _TITLE_BOUNDARY.search(stem)
+    if boundary:
+        stem = stem[: boundary.start()]
+    stem = re.sub(r"[\s\-(\[]+$", "", stem)
+    return stem.strip()
+
+
+def _scoring_title(parsed: ParsedMedia) -> str:
+    """Choose the title to score with.
+
+    Prefer the recovered full title *only* when it's a clean extension of
+    guessit's title (same prefix, extra trailing words) — the "dropped word"
+    case (Hostel → Hostel: Part III). When the raw name is junkier than
+    guessit's title (scene prefixes, anime ``[group]`` tags), keep guessit's.
+    """
+    title = parsed.title or ""
+    full = _full_title(parsed.raw)
+    if not title:
+        return full
+    normalized, normalized_full = _normalize(title), _normalize(full)
+    if normalized and normalized_full.startswith(normalized + " "):
+        return full
+    return title
+
 
 def _normalize(title: str) -> str:
     """Lowercase, strip leading articles/noise words, and fold punctuation."""
@@ -67,10 +112,11 @@ def title_similarity(a: str, b: str) -> float:
 
 def score_candidate(parsed: ParsedMedia, candidate: Candidate) -> float:
     """Score how well *candidate* matches *parsed*, in ``[0.0, 1.0]``."""
-    if parsed.title is None:
+    title = _scoring_title(parsed)
+    if not title:
         return 0.0
 
-    base = title_similarity(parsed.title, candidate.title)
+    base = title_similarity(title, candidate.title)
 
     if parsed.year is not None and candidate.year is not None:
         base += _YEAR_BONUS if parsed.year == candidate.year else -_YEAR_PENALTY
