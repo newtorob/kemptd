@@ -14,8 +14,15 @@ from rich.table import Table
 from . import __version__
 from . import apply as apply_module
 from .config import Settings
-from .diagnose import JellyfinLibrary, Mismatch, diagnose_library
+from .diagnose import (
+    JellyfinLibrary,
+    Mismatch,
+    diagnose_library,
+    dump_mismatches,
+    load_mismatches,
+)
 from .errors import ConfigError
+from .fix import apply_fixes
 from .models import Confidence, MediaKind
 from .notify import NotifyError, ServerNotifier, build_notifiers
 from .parse import parse_path
@@ -290,6 +297,9 @@ def diagnose(
     limit: Annotated[
         int | None, typer.Option("--limit", help="Only check the first N library items.")
     ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Write mismatches to JSON for `kemptd fix`.")
+    ] = None,
 ) -> None:
     """Report Jellyfin library items whose metadata match looks wrong (read-only)."""
     settings = Settings.from_env()
@@ -304,6 +314,70 @@ def diagnose(
     finally:
         library.close()
     _render_mismatches(mismatches)
+    if out is not None:
+        dump_mismatches(mismatches, out)
+        console.print(f"[green]Wrote {len(mismatches)} mismatch(es):[/] {out}")
+
+
+@app.command()
+def fix(
+    mismatch_file: Annotated[
+        Path, typer.Argument(exists=True, help="Mismatch JSON from `diagnose --out`.")
+    ],
+    apply_: Annotated[
+        bool, typer.Option("--apply", help="Execute the fixes (default: dry-run).")
+    ] = False,
+    include_conflicts: Annotated[
+        bool,
+        typer.Option(
+            "--include-conflicts",
+            help="Also fix items where Jellyfin holds a competing id (risky; review first).",
+        ),
+    ] = False,
+    path_contains: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--path-contains", help="Limit to items whose path contains this (repeatable)."
+        ),
+    ] = None,
+    journal: Annotated[
+        Path | None, typer.Option("--journal", help="Where to write the undo journal.")
+    ] = None,
+) -> None:
+    """Fix Jellyfin metadata: write the correct id into an NFO and refresh the item."""
+    settings = Settings.from_env()
+    if not (settings.jellyfin_url and settings.jellyfin_api_key):
+        console.print("[red]Set KEMPTD_JELLYFIN_URL and KEMPTD_JELLYFIN_API_KEY.[/]")
+        raise typer.Exit(code=2)
+
+    selected = [m for m in load_mismatches(mismatch_file) if include_conflicts or not m.is_conflict]
+    if path_contains:
+        selected = [m for m in selected if any(sub in m.path for sub in path_contains)]
+
+    safe = sum(not m.is_conflict for m in selected)
+    conflicts = sum(m.is_conflict for m in selected)
+    console.print(
+        f"[bold]{len(selected)}[/] item(s) to fix "
+        f"([yellow]{safe} never-matched[/], [red]{conflicts} conflicts[/])"
+    )
+
+    library = JellyfinLibrary(settings.jellyfin_url, settings.jellyfin_api_key)
+    journal_path = journal or mismatch_file.with_suffix(".fix-journal.json")
+    try:
+        report = apply_fixes(library, selected, journal_path=journal_path, dry_run=not apply_)
+    finally:
+        library.close()
+
+    console.print(
+        f"[green]wrote {report.written}[/] · refreshed {report.refreshed} · "
+        f"[dim]skipped {report.skipped}[/] · [red]failed {report.failed}[/]"
+    )
+    if not apply_:
+        console.print("[dim]Dry run — nothing written. Re-run with --apply to execute.[/]")
+    elif report.journal_path is not None:
+        console.print(
+            f"[dim]Journal: {report.journal_path}  (undo: kemptd undo {report.journal_path})[/]"
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -10,7 +10,9 @@ on. The Jellyfin HTTP client is injectable, so this is fully testable offline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import json
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,7 +23,14 @@ from .models import Candidate, Confidence, MediaKind, MovieCandidate, SeriesCand
 from .parse import parse_path
 from .providers.base import MetadataProvider
 
-__all__ = ["JellyfinLibrary", "LibraryItem", "Mismatch", "diagnose_library"]
+__all__ = [
+    "JellyfinLibrary",
+    "LibraryItem",
+    "Mismatch",
+    "diagnose_library",
+    "dump_mismatches",
+    "load_mismatches",
+]
 
 _TIMEOUT = 30.0
 
@@ -42,6 +51,7 @@ class LibraryItem:
 class Mismatch:
     """A library item whose server identity disagrees with kemptd's."""
 
+    item_id: str
     path: str
     is_movie: bool
     current_name: str
@@ -52,6 +62,11 @@ class Mismatch:
     proposed_id: str
     confidence: Confidence
     rationale: str
+
+    @property
+    def is_conflict(self) -> bool:
+        """True when the server already holds a competing provider id."""
+        return self.current_id is not None
 
 
 class JellyfinLibrary:
@@ -91,6 +106,27 @@ class JellyfinLibrary:
                 )
             )
         return items
+
+    def refresh_item(self, item_id: str) -> None:
+        """Ask Jellyfin to re-identify one item (full metadata replace).
+
+        After a correct ``.nfo`` is in place, this makes Jellyfin re-read it and
+        lock onto the id inside, rather than its old fuzzy guess.
+        """
+        try:
+            response = self._client.post(
+                f"/Items/{item_id}/Refresh",
+                params={
+                    "metadataRefreshMode": "FullRefresh",
+                    "imageRefreshMode": "FullRefresh",
+                    "replaceAllMetadata": "true",
+                    "replaceAllImages": "false",
+                },
+                headers={"Authorization": f'MediaBrowser Token="{self._api_key}"'},
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ServerError(f"Jellyfin refresh of {item_id} failed: {exc}") from exc
 
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -163,6 +199,7 @@ def _diagnose_item(item: LibraryItem, provider: MetadataProvider) -> Mismatch | 
         return None  # server already agrees
 
     return Mismatch(
+        item_id=item.id,
         path=item.path,
         is_movie=item.is_movie,
         current_name=item.name,
@@ -188,3 +225,16 @@ def diagnose_library(
         if mismatch is not None:
             mismatches.append(mismatch)
     return mismatches
+
+
+def dump_mismatches(mismatches: list[Mismatch], path: Path) -> None:
+    """Write diagnosed mismatches to JSON so `fix` can act on them later."""
+    payload = [{**asdict(m), "confidence": m.confidence.value} for m in mismatches]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def load_mismatches(path: Path) -> list[Mismatch]:
+    """Read mismatches previously written by :func:`dump_mismatches`."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return [Mismatch(**{**row, "confidence": Confidence(row["confidence"])}) for row in payload]

@@ -107,6 +107,26 @@ kemptd scan PATH --apply --notify plex,jellyfin   # trigger a library rescan aft
   export KEMPTD_JELLYFIN_URL=http://192.168.68.80:8096 KEMPTD_JELLYFIN_API_KEY=...
   ```
 
+## Fixing an existing library
+
+`scan` organizes files so a server can match them. For items **already** in
+Jellyfin that it matched *wrong* (or never matched), kemptd can diagnose and
+correct them in place:
+
+```console
+export KEMPTD_JELLYFIN_URL=http://192.168.68.80:8096  KEMPTD_JELLYFIN_API_KEY=...
+export KEMPTD_TMDB_API_KEY=...
+
+kemptd diagnose --out mismatches.json      # read-only: list where TMDb disagrees
+kemptd fix mismatches.json                 # dry-run: show what it would correct
+kemptd fix mismatches.json --apply         # write correct-id .nfo + refresh Jellyfin
+kemptd undo mismatches.fix-journal.json    # reverse it
+```
+
+`fix` only touches **never-matched** items by default (there's no correct match
+to break); items where Jellyfin holds a *competing* id are skipped unless you
+pass `--include-conflicts`, since those deserve a human eye.
+
 ## Status
 
 Alpha, but **end-to-end usable**: `scan` / `apply` / `undo` all work against TMDb,

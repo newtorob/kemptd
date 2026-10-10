@@ -3,10 +3,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
-from kemptd.diagnose import JellyfinLibrary, diagnose_library
+from kemptd.diagnose import (
+    JellyfinLibrary,
+    diagnose_library,
+    dump_mismatches,
+    load_mismatches,
+)
 from kemptd.errors import ServerError
 from kemptd.models import MovieCandidate, SeriesCandidate
 
@@ -124,3 +131,26 @@ def test_http_error_raises_server_error() -> None:
 def test_empty_api_key_rejected() -> None:
     with pytest.raises(ServerError, match="API key"):
         JellyfinLibrary("http://jelly:8096", "")
+
+
+def test_mismatches_round_trip(tmp_path: Path) -> None:
+    ms = diagnose_library(_library(lambda _: httpx.Response(200, json=_ITEMS)), FakeProvider())
+    assert ms  # Mars is a mismatch
+    path = tmp_path / "m.json"
+    dump_mismatches(ms, path)
+    assert load_mismatches(path) == ms
+
+
+def test_refresh_item_posts_full_replace() -> None:
+    seen: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["replace"] = request.url.params.get("replaceAllMetadata")
+        return httpx.Response(204)
+
+    _library(handler).refresh_item("abc123")
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/Items/abc123/Refresh"
+    assert seen["replace"] == "true"
