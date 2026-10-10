@@ -14,6 +14,8 @@ from dataclasses import dataclass
 __all__ = ["Settings"]
 
 _TMDB_API_KEY = "KEMPTD_TMDB_API_KEY"
+_TVDB_API_KEY = "KEMPTD_TVDB_API_KEY"
+_TVDB_PIN = "KEMPTD_TVDB_PIN"
 _PLEX_URL = "KEMPTD_PLEX_URL"
 _PLEX_TOKEN = "KEMPTD_PLEX_TOKEN"
 _JELLYFIN_URL = "KEMPTD_JELLYFIN_URL"
@@ -25,6 +27,8 @@ class Settings:
     """Resolved configuration for a kemptd run."""
 
     tmdb_api_key: str | None = None
+    tvdb_api_key: str | None = None
+    tvdb_pin: str | None = None
     plex_url: str | None = None
     plex_token: str | None = None
     jellyfin_url: str | None = None
@@ -36,6 +40,8 @@ class Settings:
         source = os.environ if env is None else env
         return cls(
             tmdb_api_key=source.get(_TMDB_API_KEY),
+            tvdb_api_key=source.get(_TVDB_API_KEY),
+            tvdb_pin=source.get(_TVDB_PIN),
             plex_url=source.get(_PLEX_URL),
             plex_token=source.get(_PLEX_TOKEN),
             jellyfin_url=source.get(_JELLYFIN_URL),

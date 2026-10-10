@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from .base import MetadataProvider
+from .base import AbsoluteResolver, MetadataProvider
 from .tmdb import TmdbProvider
+from .tvdb import TvdbProvider
 
-__all__ = ["MetadataProvider", "TmdbProvider"]
+__all__ = ["AbsoluteResolver", "MetadataProvider", "TmdbProvider", "TvdbProvider"]

@@ -71,6 +71,20 @@ kemptd parse PATH                          # just show what kemptd parsed (no ma
 Only `HIGH`-confidence, cleanly-templatable matches become moves; everything else
 is reported as a skip with a reason, so a bad guess never silently reorganizes a file.
 
+### Anime (absolute numbering)
+
+Anime is usually released with a single running episode number (`One Piece - 1091`)
+rather than season/episode. Point kemptd at the **TVDB** backend and it resolves
+each absolute number to its aired season/episode before planning:
+
+```console
+export KEMPTD_TVDB_API_KEY=...             # https://thetvdb.com/api-information
+kemptd scan /media/Anime --provider tvdb   # 'One Piece - 1091' → Season NN/… - SNNEMM
+```
+
+Anything it can't resolve (unknown number, or a pack spanning seasons) is skipped
+rather than guessed.
+
 ### Make the servers match it, automatically
 
 Clean filenames are what let Jellyfin/Plex/Kodi identify a file — but you can go

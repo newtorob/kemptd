@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from kemptd.models import MovieCandidate, SeriesCandidate
+from kemptd.models import EpisodeNumber, MovieCandidate, SeriesCandidate
 
-__all__ = ["MetadataProvider"]
+__all__ = ["AbsoluteResolver", "MetadataProvider"]
 
 
 @runtime_checkable
@@ -31,4 +31,20 @@ class MetadataProvider(Protocol):
 
     def search_movie(self, title: str, *, year: int | None = None) -> list[MovieCandidate]:
         """Return movie candidates ranked by the provider's own relevance."""
+        ...
+
+
+@runtime_checkable
+class AbsoluteResolver(Protocol):
+    """A provider that can map an anime absolute episode number to season/episode.
+
+    Optional capability: the scanner uses it only when a file is absolute-numbered
+    and the active provider happens to implement it (e.g. TVDB), so season-aware
+    providers and anime-aware providers share one code path.
+    """
+
+    def resolve_absolute(
+        self, series: SeriesCandidate, absolute_number: int
+    ) -> EpisodeNumber | None:
+        """Return the aired coordinate for *absolute_number*, or ``None`` if unknown."""
         ...

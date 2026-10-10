@@ -9,13 +9,14 @@ with a fake and never hit the network.
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from .matching import best_match
-from .models import Candidate, Confidence, MatchResult, MediaKind
+from .models import Candidate, Confidence, MatchResult, MediaKind, SeriesCandidate
 from .parse import parse_path
 from .plan import Plan, build_plan
-from .providers.base import MetadataProvider
+from .providers.base import AbsoluteResolver, MetadataProvider
 
 __all__ = ["VIDEO_SUFFIXES", "iter_videos", "match_media", "scan_library"]
 
@@ -55,7 +56,46 @@ def match_media(parsed_source: Path, provider: MetadataProvider) -> MatchResult:
     except ProviderError as exc:
         return MatchResult(parsed, None, 0.0, Confidence.NONE, f"provider error: {exc}")
 
-    return best_match(parsed, list(candidates))
+    result = best_match(parsed, list(candidates))
+    return _resolve_absolute(result, provider)
+
+
+def _resolve_absolute(result: MatchResult, provider: MetadataProvider) -> MatchResult:
+    """Rewrite an absolute-numbered anime match into aired season/episode form.
+
+    Absolute-numbered files can't be templated (no season), so this upgrades them
+    in place when the provider can resolve the ordering. Anything we can't resolve
+    cleanly (unknown episode, or a pack spanning seasons) is left untouched, so it
+    surfaces as an honest skip rather than a wrong guess.
+    """
+    if not (result.parsed.is_absolute_numbered and isinstance(result.candidate, SeriesCandidate)):
+        return result
+    if not isinstance(provider, AbsoluteResolver):
+        return result
+
+    from .errors import ProviderError
+
+    resolved = []
+    for absolute in result.parsed.absolute_episodes:
+        try:
+            episode = provider.resolve_absolute(result.candidate, absolute)
+        except ProviderError:
+            return result
+        if episode is None:
+            return result
+        resolved.append(episode)
+
+    seasons = {ep.season for ep in resolved}
+    if len(seasons) != 1:
+        return result  # a pack straddling seasons — don't invent a layout
+
+    new_parsed = replace(
+        result.parsed,
+        season=seasons.pop(),
+        episodes=tuple(ep.episode for ep in resolved),
+        absolute_episodes=(),
+    )
+    return replace(result, parsed=new_parsed)
 
 
 def scan_library(root: Path, provider: MetadataProvider, *, limit: int | None = None) -> Plan:

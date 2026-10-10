@@ -97,6 +97,18 @@ class MatchResult:
 
 
 @dataclass(frozen=True, slots=True)
+class EpisodeNumber:
+    """An aired season/episode coordinate.
+
+    The result of resolving an anime-style absolute number (e.g. "episode 91")
+    against a provider's episode ordering.
+    """
+
+    season: int
+    episode: int
+
+
+@dataclass(frozen=True, slots=True)
 class MediaMeta:
     """The confirmed provider identity of a matched file.
 

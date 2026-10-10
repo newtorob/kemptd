@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
@@ -18,9 +19,17 @@ from .models import Confidence, MediaKind
 from .notify import NotifyError, ServerNotifier, build_notifiers
 from .parse import parse_path
 from .plan import Plan, PlanAction
-from .providers import TmdbProvider
+from .providers import TmdbProvider, TvdbProvider
 from .scanner import iter_videos, scan_library
 from .serde import dump_plan, load_plan
+
+
+class ProviderChoice(str, Enum):
+    """Which metadata backend to match against."""
+
+    tmdb = "tmdb"
+    tvdb = "tvdb"
+
 
 app = typer.Typer(
     name="kemptd",
@@ -140,6 +149,23 @@ def _run_notifiers(notifiers: list[ServerNotifier]) -> None:
             console.print(f"[yellow]{exc}[/]")
 
 
+def _open_provider(choice: ProviderChoice, settings: Settings) -> TmdbProvider | TvdbProvider:
+    """Construct the chosen provider, exiting cleanly if its key is unset.
+
+    TVDB additionally resolves anime absolute numbering (e.g. "One Piece 1091"
+    → aired season/episode); TMDb is the default for movies and seasoned TV.
+    """
+    if choice is ProviderChoice.tvdb:
+        if not settings.tvdb_api_key:
+            console.print("[red]Set KEMPTD_TVDB_API_KEY to use the TVDB provider.[/]")
+            raise typer.Exit(code=2)
+        return TvdbProvider(settings.tvdb_api_key, pin=settings.tvdb_pin)
+    if not settings.tmdb_api_key:
+        console.print("[red]Set KEMPTD_TMDB_API_KEY to enable matching.[/]")
+        raise typer.Exit(code=2)
+    return TmdbProvider(settings.tmdb_api_key)
+
+
 @app.command()
 def scan(
     path: Annotated[
@@ -165,18 +191,22 @@ def scan(
         str | None,
         typer.Option("--notify", help="Rescan these servers after applying, e.g. 'plex,jellyfin'."),
     ] = None,
+    provider: Annotated[
+        ProviderChoice,
+        typer.Option(
+            "--provider", help="Metadata backend; tvdb resolves anime absolute numbering."
+        ),
+    ] = ProviderChoice.tmdb,
 ) -> None:
-    """Scan PATH, match against TMDb, and build (and optionally apply) a plan."""
+    """Scan PATH, match against a provider, and build (and optionally apply) a plan."""
     settings = Settings.from_env()
-    if not settings.tmdb_api_key:
-        console.print("[red]Set KEMPTD_TMDB_API_KEY to enable matching.[/]")
-        raise typer.Exit(code=2)
     if notify and not apply_:
         console.print("[yellow]--notify has no effect without --apply.[/]")
+    backend = _open_provider(provider, settings)
     notifiers = _resolve_notifiers(notify, settings) if apply_ else []
 
-    with TmdbProvider(settings.tmdb_api_key) as provider:
-        plan = scan_library(path, provider, limit=limit)
+    with backend as client:
+        plan = scan_library(path, client, limit=limit)
 
     _render_plan(plan)
     if plan_out is not None:
