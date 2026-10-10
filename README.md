@@ -127,6 +127,13 @@ kemptd undo mismatches.fix-journal.json    # reverse it
 to break); items where Jellyfin holds a *competing* id are skipped unless you
 pass `--include-conflicts`, since those deserve a human eye.
 
+If your server runs in Docker, its stored paths are *container* paths — map them
+back to the host so `fix` writes the sidecar in the right place:
+
+```console
+kemptd fix mismatches.json --apply --path-map /media=/media/rob
+```
+
 ## Status
 
 Alpha, but **end-to-end usable**: `scan` / `apply` / `undo` all work against TMDb,

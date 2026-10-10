@@ -49,6 +49,17 @@ def test_nfo_path_for_movie_and_series(tmp_path: Path) -> None:
     assert nfo_path_for(series) == tmp_path / "Show (2020)" / "tvshow.nfo"
 
 
+def test_path_map_remaps_container_prefix_to_host() -> None:
+    # Jellyfin stores the container path; map it to where the file really is.
+    movie = _mm("1", "/media/pleiades/Movies/F (2020)/F.2020.mkv", True, "tmdb:5")
+    mapped = nfo_path_for(movie, [("/media", "/media/rob")])
+    assert mapped == Path("/media/rob/pleiades/Movies/F (2020)/F.2020.nfo")
+    # A non-matching prefix is left untouched.
+    assert nfo_path_for(movie, [("/other", "/x")]) == Path(
+        "/media/pleiades/Movies/F (2020)/F.2020.nfo"
+    )
+
+
 def test_apply_writes_series_nfo_and_refreshes(tmp_path: Path) -> None:
     folder = tmp_path / "Show (1999)"
     folder.mkdir()

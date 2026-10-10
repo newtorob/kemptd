@@ -340,6 +340,13 @@ def fix(
             "--path-contains", help="Limit to items whose path contains this (repeatable)."
         ),
     ] = None,
+    path_map: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--path-map",
+            help="Remap a server path prefix to the host, e.g. '/media=/media/rob' (repeatable).",
+        ),
+    ] = None,
     journal: Annotated[
         Path | None, typer.Option("--journal", help="Where to write the undo journal.")
     ] = None,
@@ -349,6 +356,14 @@ def fix(
     if not (settings.jellyfin_url and settings.jellyfin_api_key):
         console.print("[red]Set KEMPTD_JELLYFIN_URL and KEMPTD_JELLYFIN_API_KEY.[/]")
         raise typer.Exit(code=2)
+
+    mapping: list[tuple[str, str]] = []
+    for entry in path_map or []:
+        container, sep, host = entry.partition("=")
+        if not sep:
+            console.print(f"[red]--path-map needs CONTAINER=HOST, got {entry!r}[/]")
+            raise typer.Exit(code=2)
+        mapping.append((container, host))
 
     selected = [m for m in load_mismatches(mismatch_file) if include_conflicts or not m.is_conflict]
     if path_contains:
@@ -364,7 +379,9 @@ def fix(
     library = JellyfinLibrary(settings.jellyfin_url, settings.jellyfin_api_key)
     journal_path = journal or mismatch_file.with_suffix(".fix-journal.json")
     try:
-        report = apply_fixes(library, selected, journal_path=journal_path, dry_run=not apply_)
+        report = apply_fixes(
+            library, selected, journal_path=journal_path, dry_run=not apply_, path_map=mapping
+        )
     finally:
         library.close()
 

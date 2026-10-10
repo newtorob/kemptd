@@ -42,9 +42,21 @@ def _meta(mismatch: Mismatch) -> MediaMeta:
     )
 
 
-def nfo_path_for(mismatch: Mismatch) -> Path:
+def _remap(path: str, path_map: list[tuple[str, str]] | None) -> str:
+    """Translate a server (often containerized) path prefix to a host path.
+
+    e.g. a Jellyfin mount of ``/media/rob:/media`` stores ``/media/x``; mapping
+    ``/media`` → ``/media/rob`` points kemptd at the real file on the host.
+    """
+    for container, host in path_map or []:
+        if path == container or path.startswith(container.rstrip("/") + "/"):
+            return host.rstrip("/") + path[len(container.rstrip("/")) :]
+    return path
+
+
+def nfo_path_for(mismatch: Mismatch, path_map: list[tuple[str, str]] | None = None) -> Path:
     """Where the sidecar goes: beside a movie file, or ``tvshow.nfo`` in a series dir."""
-    path = Path(mismatch.path)
+    path = Path(_remap(mismatch.path, path_map))
     return path.with_suffix(".nfo") if mismatch.is_movie else path / "tvshow.nfo"
 
 
@@ -59,13 +71,14 @@ def apply_fixes(
     *,
     journal_path: Path,
     dry_run: bool = False,
+    path_map: list[tuple[str, str]] | None = None,
 ) -> FixReport:
     """Write correct-id sidecars and refresh each item. Dry-run writes nothing."""
     report = FixReport(journal_path=None if dry_run else journal_path)
     journal: list[dict[str, str]] = []
 
     for mismatch in mismatches:
-        nfo = nfo_path_for(mismatch)
+        nfo = nfo_path_for(mismatch, path_map)
         if nfo.exists():
             report.skipped += 1  # never clobber an existing sidecar
             continue
