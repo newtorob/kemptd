@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-__all__ = ["ConfigError", "KemptdError", "ProviderError"]
+__all__ = ["ConfigError", "KemptdError", "ProviderError", "ServerError"]
 
 
 class KemptdError(Exception):
@@ -16,3 +16,7 @@ class ProviderError(KemptdError):
 
 class ConfigError(KemptdError):
     """Configuration is missing or invalid."""
+
+
+class ServerError(KemptdError):
+    """A media server (Plex/Jellyfin) failed to return a usable response."""

@@ -14,6 +14,7 @@ from rich.table import Table
 from . import __version__
 from . import apply as apply_module
 from .config import Settings
+from .diagnose import JellyfinLibrary, Mismatch, diagnose_library
 from .errors import ConfigError
 from .models import Confidence, MediaKind
 from .notify import NotifyError, ServerNotifier, build_notifiers
@@ -261,6 +262,48 @@ def undo(
     """Reverse the moves recorded in a journal."""
     restored = apply_module.undo(journal_file)
     console.print(f"[green]Restored {restored} file(s).[/]")
+
+
+def _render_mismatches(mismatches: list[Mismatch]) -> None:
+    if not mismatches:
+        console.print("[green]No metadata mismatches found.[/]")
+        return
+    table = Table(title=f"{len(mismatches)} metadata mismatch(es)")
+    table.add_column("Type", style="cyan")
+    table.add_column("Jellyfin now", overflow="fold")
+    table.add_column("kemptd says", style="green", overflow="fold")
+    table.add_column("Conf")
+    for m in mismatches:
+        now = f"{m.current_name} ({m.current_year or '?'})  [{m.current_id or 'unmatched'}]"
+        says = f"{m.proposed_title} ({m.proposed_year or '?'})  [{m.proposed_id}]"
+        table.add_row("movie" if m.is_movie else "series", now, says, m.confidence.value)
+    console.print(table)
+    console.print("[dim]Read-only diagnosis — no changes made.[/]")
+
+
+@app.command()
+def diagnose(
+    provider: Annotated[
+        ProviderChoice,
+        typer.Option("--provider", help="Metadata backend to check the library against."),
+    ] = ProviderChoice.tmdb,
+    limit: Annotated[
+        int | None, typer.Option("--limit", help="Only check the first N library items.")
+    ] = None,
+) -> None:
+    """Report Jellyfin library items whose metadata match looks wrong (read-only)."""
+    settings = Settings.from_env()
+    if not (settings.jellyfin_url and settings.jellyfin_api_key):
+        console.print("[red]Set KEMPTD_JELLYFIN_URL and KEMPTD_JELLYFIN_API_KEY.[/]")
+        raise typer.Exit(code=2)
+    backend = _open_provider(provider, settings)
+    library = JellyfinLibrary(settings.jellyfin_url, settings.jellyfin_api_key)
+    try:
+        with backend as client:
+            mismatches = diagnose_library(library, client, limit=limit)
+    finally:
+        library.close()
+    _render_mismatches(mismatches)
 
 
 if __name__ == "__main__":  # pragma: no cover
