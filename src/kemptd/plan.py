@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from .models import Confidence, MatchResult
+from .models import Confidence, MatchResult, MediaMeta, MovieCandidate, SeriesCandidate
 from .template import TemplateError, relative_path
 
 __all__ = ["Plan", "PlanAction", "PlanItem", "build_plan"]
@@ -32,6 +32,19 @@ class PlanItem:
     action: PlanAction
     confidence: Confidence
     reason: str
+    meta: MediaMeta | None = None
+
+
+def _meta_from_match(match: MatchResult) -> MediaMeta | None:
+    """Capture the provider identity of an actionable match for NFO sidecars."""
+    candidate = match.candidate
+    if isinstance(candidate, SeriesCandidate):
+        return MediaMeta(
+            True, candidate.title, candidate.year, candidate.tmdb_id, candidate.tvdb_id
+        )
+    if isinstance(candidate, MovieCandidate):
+        return MediaMeta(False, candidate.title, candidate.year, candidate.tmdb_id)
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +84,13 @@ def build_plan(entries: Iterable[tuple[Path, MatchResult]], *, root: Path) -> Pl
             )
             continue
         items.append(
-            PlanItem(source, destination, PlanAction.MOVE, match.confidence, match.rationale)
+            PlanItem(
+                source,
+                destination,
+                PlanAction.MOVE,
+                match.confidence,
+                match.rationale,
+                _meta_from_match(match),
+            )
         )
     return Plan(tuple(items))

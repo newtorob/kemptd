@@ -7,12 +7,32 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import Confidence
+from .models import Confidence, MediaMeta
 from .plan import Plan, PlanAction, PlanItem
 
 __all__ = ["FORMAT_VERSION", "dump_plan", "load_plan"]
 
 FORMAT_VERSION = 1
+
+
+def _meta_to_dict(meta: MediaMeta) -> dict[str, Any]:
+    return {
+        "is_series": meta.is_series,
+        "title": meta.title,
+        "year": meta.year,
+        "tmdb_id": meta.tmdb_id,
+        "tvdb_id": meta.tvdb_id,
+    }
+
+
+def _meta_from_dict(data: dict[str, Any]) -> MediaMeta:
+    return MediaMeta(
+        is_series=data["is_series"],
+        title=data["title"],
+        year=data.get("year"),
+        tmdb_id=data.get("tmdb_id"),
+        tvdb_id=data.get("tvdb_id"),
+    )
 
 
 def _item_to_dict(item: PlanItem) -> dict[str, Any]:
@@ -22,17 +42,20 @@ def _item_to_dict(item: PlanItem) -> dict[str, Any]:
         "action": item.action.value,
         "confidence": item.confidence.value,
         "reason": item.reason,
+        "meta": _meta_to_dict(item.meta) if item.meta is not None else None,
     }
 
 
 def _item_from_dict(data: dict[str, Any]) -> PlanItem:
     destination = data["destination"]
+    meta = data.get("meta")
     return PlanItem(
         source=Path(data["source"]),
         destination=Path(destination) if destination is not None else None,
         action=PlanAction(data["action"]),
         confidence=Confidence(data["confidence"]),
         reason=data["reason"],
+        meta=_meta_from_dict(meta) if meta is not None else None,
     )
 
 

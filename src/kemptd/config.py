@@ -14,6 +14,10 @@ from dataclasses import dataclass
 __all__ = ["Settings"]
 
 _TMDB_API_KEY = "KEMPTD_TMDB_API_KEY"
+_PLEX_URL = "KEMPTD_PLEX_URL"
+_PLEX_TOKEN = "KEMPTD_PLEX_TOKEN"
+_JELLYFIN_URL = "KEMPTD_JELLYFIN_URL"
+_JELLYFIN_API_KEY = "KEMPTD_JELLYFIN_API_KEY"
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,9 +25,19 @@ class Settings:
     """Resolved configuration for a kemptd run."""
 
     tmdb_api_key: str | None = None
+    plex_url: str | None = None
+    plex_token: str | None = None
+    jellyfin_url: str | None = None
+    jellyfin_api_key: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
         """Build settings from environment variables (defaults to ``os.environ``)."""
         source = os.environ if env is None else env
-        return cls(tmdb_api_key=source.get(_TMDB_API_KEY))
+        return cls(
+            tmdb_api_key=source.get(_TMDB_API_KEY),
+            plex_url=source.get(_PLEX_URL),
+            plex_token=source.get(_PLEX_TOKEN),
+            jellyfin_url=source.get(_JELLYFIN_URL),
+            jellyfin_api_key=source.get(_JELLYFIN_API_KEY),
+        )

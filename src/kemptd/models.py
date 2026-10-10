@@ -94,3 +94,19 @@ class MatchResult:
     def is_actionable(self) -> bool:
         """Whether this match is safe to turn into a plan without review."""
         return self.candidate is not None and self.confidence is Confidence.HIGH
+
+
+@dataclass(frozen=True, slots=True)
+class MediaMeta:
+    """The confirmed provider identity of a matched file.
+
+    Carried on a plan item so the apply layer can emit ``.nfo`` sidecars with a
+    stable provider id — long after the live provider/match objects are gone
+    (e.g. when applying a plan loaded back from JSON).
+    """
+
+    is_series: bool
+    title: str
+    year: int | None = None
+    tmdb_id: int | None = None
+    tvdb_id: int | None = None

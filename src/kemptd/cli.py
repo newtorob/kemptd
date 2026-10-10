@@ -13,7 +13,9 @@ from rich.table import Table
 from . import __version__
 from . import apply as apply_module
 from .config import Settings
+from .errors import ConfigError
 from .models import Confidence, MediaKind
+from .notify import NotifyError, ServerNotifier, build_notifiers
 from .parse import parse_path
 from .plan import Plan, PlanAction
 from .providers import TmdbProvider
@@ -113,6 +115,31 @@ def _render_report(report: apply_module.ApplyReport) -> None:
         )
 
 
+def _parse_notify(value: str | None) -> list[str]:
+    """Split a ``--notify`` value like ``"plex,jellyfin"`` into server names."""
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _resolve_notifiers(notify: str | None, settings: Settings) -> list[ServerNotifier]:
+    """Build notifiers up front so bad config fails before any files move."""
+    try:
+        return build_notifiers(_parse_notify(notify), settings)
+    except ConfigError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=2) from exc
+
+
+def _run_notifiers(notifiers: list[ServerNotifier]) -> None:
+    for notifier in notifiers:
+        try:
+            notifier.refresh()
+            console.print(f"[green]Triggered {notifier.name} library rescan.[/]")
+        except NotifyError as exc:
+            console.print(f"[yellow]{exc}[/]")
+
+
 @app.command()
 def scan(
     path: Annotated[
@@ -128,12 +155,25 @@ def scan(
     limit: Annotated[
         int | None, typer.Option("--limit", help="Only process the first N files.")
     ] = None,
+    write_nfo: Annotated[
+        bool,
+        typer.Option(
+            "--write-nfo", help="Write .nfo sidecars with provider IDs for exact matching."
+        ),
+    ] = False,
+    notify: Annotated[
+        str | None,
+        typer.Option("--notify", help="Rescan these servers after applying, e.g. 'plex,jellyfin'."),
+    ] = None,
 ) -> None:
     """Scan PATH, match against TMDb, and build (and optionally apply) a plan."""
     settings = Settings.from_env()
     if not settings.tmdb_api_key:
         console.print("[red]Set KEMPTD_TMDB_API_KEY to enable matching.[/]")
         raise typer.Exit(code=2)
+    if notify and not apply_:
+        console.print("[yellow]--notify has no effect without --apply.[/]")
+    notifiers = _resolve_notifiers(notify, settings) if apply_ else []
 
     with TmdbProvider(settings.tmdb_api_key) as provider:
         plan = scan_library(path, provider, limit=limit)
@@ -147,7 +187,10 @@ def scan(
         journal = (
             (plan_out.with_suffix(".journal.json")) if plan_out else path / ".kemptd-journal.json"
         )
-        _render_report(apply_module.apply_plan(plan, journal_path=journal))
+        report = apply_module.apply_plan(plan, journal_path=journal, write_nfo=write_nfo)
+        _render_report(report)
+        if report.moved:
+            _run_notifiers(notifiers)
     else:
         console.print("[dim]Dry run — nothing moved. Re-run with --apply to execute.[/]")
 
@@ -160,11 +203,25 @@ def apply(
     journal: Annotated[
         Path | None, typer.Option("--journal", help="Where to write the undo journal.")
     ] = None,
+    write_nfo: Annotated[
+        bool,
+        typer.Option(
+            "--write-nfo", help="Write .nfo sidecars with provider IDs for exact matching."
+        ),
+    ] = False,
+    notify: Annotated[
+        str | None,
+        typer.Option("--notify", help="Rescan these servers afterward, e.g. 'plex,jellyfin'."),
+    ] = None,
 ) -> None:
     """Execute a previously-saved plan."""
+    notifiers = _resolve_notifiers(notify, Settings.from_env())
     plan = load_plan(plan_file)
     journal_path = journal or plan_file.with_suffix(".journal.json")
-    _render_report(apply_module.apply_plan(plan, journal_path=journal_path))
+    report = apply_module.apply_plan(plan, journal_path=journal_path, write_nfo=write_nfo)
+    _render_report(report)
+    if report.moved:
+        _run_notifiers(notifiers)
 
 
 @app.command()

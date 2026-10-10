@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from kemptd.models import Confidence
+from kemptd.models import Confidence, MediaMeta
 from kemptd.plan import Plan, PlanAction, PlanItem
 from kemptd.serde import dump_plan, load_plan
 
@@ -21,6 +21,7 @@ def test_plan_round_trips(tmp_path: Path) -> None:
                 PlanAction.MOVE,
                 Confidence.HIGH,
                 "rationale",
+                MediaMeta(True, "Show", 2022, tmdb_id=42),
             ),
             PlanItem(Path("/src/x.mkv"), None, PlanAction.SKIP, Confidence.LOW, "not actionable"),
         )

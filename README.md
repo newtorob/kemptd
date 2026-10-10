@@ -71,11 +71,34 @@ kemptd parse PATH                          # just show what kemptd parsed (no ma
 Only `HIGH`-confidence, cleanly-templatable matches become moves; everything else
 is reported as a skip with a reason, so a bad guess never silently reorganizes a file.
 
+### Make the servers match it, automatically
+
+Clean filenames are what let Jellyfin/Plex/Kodi identify a file — but you can go
+further and hand them the answer:
+
+```console
+kemptd scan PATH --apply --write-nfo       # drop .nfo sidecars with the provider id
+kemptd scan PATH --apply --notify plex,jellyfin   # trigger a library rescan afterwards
+```
+
+- **`--write-nfo`** writes a `tvshow.nfo` (series) or `Movie (Year).nfo` (movie)
+  carrying the TMDb/TVDB id, so servers match *deterministically* — no fuzzy
+  guessing, even for parodies, remakes, or alternate cuts. Sidecars are journaled,
+  so `undo` removes exactly what a run created.
+- **`--notify`** asks the named servers to rescan once files are in place, so you
+  never have to hit "Scan Library" by hand. Configure endpoints via the environment:
+
+  ```console
+  export KEMPTD_PLEX_URL=http://192.168.68.80:32400   KEMPTD_PLEX_TOKEN=...
+  export KEMPTD_JELLYFIN_URL=http://192.168.68.80:8096 KEMPTD_JELLYFIN_API_KEY=...
+  ```
+
 ## Status
 
 Alpha, but **end-to-end usable**: `scan` / `apply` / `undo` all work against TMDb,
-with dry-run by default and a reversible journal. Next up: TVDB/AniDB providers for
-anime absolute-numbering.
+with dry-run by default, a reversible journal, optional `.nfo` sidecars, and
+automatic Plex/Jellyfin rescans. Next up: TVDB/AniDB providers for anime
+absolute-numbering.
 
 ## License
 
