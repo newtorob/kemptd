@@ -27,6 +27,7 @@ from .models import Confidence, MediaKind
 from .notify import NotifyError, ServerNotifier, build_notifiers
 from .parse import parse_path
 from .plan import Plan, PlanAction
+from .plex import PlexServer
 from .providers import TmdbProvider, TvdbProvider
 from .scanner import iter_videos, scan_library
 from .serde import dump_plan, load_plan
@@ -37,6 +38,13 @@ class ProviderChoice(str, Enum):
 
     tmdb = "tmdb"
     tvdb = "tvdb"
+
+
+class ServerChoice(str, Enum):
+    """Which media server to diagnose."""
+
+    jellyfin = "jellyfin"
+    plex = "plex"
 
 
 app = typer.Typer(
@@ -288,8 +296,24 @@ def _render_mismatches(mismatches: list[Mismatch]) -> None:
     console.print("[dim]Read-only diagnosis — no changes made.[/]")
 
 
+def _open_library(server: ServerChoice, settings: Settings) -> JellyfinLibrary | PlexServer:
+    """Build the chosen media-server reader, exiting cleanly if unconfigured."""
+    if server is ServerChoice.plex:
+        if not (settings.plex_url and settings.plex_token):
+            console.print("[red]Set KEMPTD_PLEX_URL and KEMPTD_PLEX_TOKEN.[/]")
+            raise typer.Exit(code=2)
+        return PlexServer(settings.plex_url, settings.plex_token)
+    if not (settings.jellyfin_url and settings.jellyfin_api_key):
+        console.print("[red]Set KEMPTD_JELLYFIN_URL and KEMPTD_JELLYFIN_API_KEY.[/]")
+        raise typer.Exit(code=2)
+    return JellyfinLibrary(settings.jellyfin_url, settings.jellyfin_api_key)
+
+
 @app.command()
 def diagnose(
+    server: Annotated[
+        ServerChoice, typer.Option("--server", help="Which media server to check.")
+    ] = ServerChoice.jellyfin,
     provider: Annotated[
         ProviderChoice,
         typer.Option("--provider", help="Metadata backend to check the library against."),
@@ -301,13 +325,10 @@ def diagnose(
         Path | None, typer.Option("--out", help="Write mismatches to JSON for `kemptd fix`.")
     ] = None,
 ) -> None:
-    """Report Jellyfin library items whose metadata match looks wrong (read-only)."""
+    """Report media-server items whose metadata match looks wrong (read-only)."""
     settings = Settings.from_env()
-    if not (settings.jellyfin_url and settings.jellyfin_api_key):
-        console.print("[red]Set KEMPTD_JELLYFIN_URL and KEMPTD_JELLYFIN_API_KEY.[/]")
-        raise typer.Exit(code=2)
     backend = _open_provider(provider, settings)
-    library = JellyfinLibrary(settings.jellyfin_url, settings.jellyfin_api_key)
+    library = _open_library(server, settings)
     try:
         with backend as client:
             mismatches = diagnose_library(library, client, limit=limit)

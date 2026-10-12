@@ -123,6 +123,11 @@ kemptd fix mismatches.json --apply         # write correct-id .nfo + refresh Jel
 kemptd undo mismatches.fix-journal.json    # reverse it
 ```
 
+`diagnose` also reads **Plex** (`--server plex`, with `KEMPTD_PLEX_URL` /
+`KEMPTD_PLEX_TOKEN`). Note Plex ignores `.nfo`, so correcting a Plex match uses
+its own `/match` API — that `fix` path is in progress; `diagnose --server plex`
+reports the mismatches today.
+
 `fix` only touches **never-matched** items by default (there's no correct match
 to break); items where Jellyfin holds a *competing* id are skipped unless you
 pass `--include-conflicts`, since those deserve a human eye.

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -26,6 +26,7 @@ from .providers.base import MetadataProvider
 __all__ = [
     "JellyfinLibrary",
     "LibraryItem",
+    "LibraryReader",
     "Mismatch",
     "diagnose_library",
     "dump_mismatches",
@@ -213,8 +214,15 @@ def _diagnose_item(item: LibraryItem, provider: MetadataProvider) -> Mismatch | 
     )
 
 
+@runtime_checkable
+class LibraryReader(Protocol):
+    """Any media server kemptd can read a catalog from (Jellyfin, Plex, …)."""
+
+    def items(self) -> list[LibraryItem]: ...
+
+
 def diagnose_library(
-    library: JellyfinLibrary, provider: MetadataProvider, *, limit: int | None = None
+    library: LibraryReader, provider: MetadataProvider, *, limit: int | None = None
 ) -> list[Mismatch]:
     """Return the confidently-detected metadata mismatches in *library*."""
     mismatches: list[Mismatch] = []
