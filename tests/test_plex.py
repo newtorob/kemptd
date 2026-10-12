@@ -6,10 +6,10 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from kemptd.diagnose import LibraryReader, diagnose_library
+from kemptd.diagnose import LibraryReader, Mismatch, diagnose_library
 from kemptd.errors import ServerError
-from kemptd.models import MovieCandidate, SeriesCandidate
-from kemptd.plex import PlexServer
+from kemptd.models import Confidence, MovieCandidate, SeriesCandidate
+from kemptd.plex import PlexServer, apply_plex_fixes
 
 _SECTIONS = {
     "MediaContainer": {
@@ -114,3 +114,79 @@ def test_http_error_raises_server_error() -> None:
 def test_empty_token_rejected() -> None:
     with pytest.raises(ServerError, match="token"):
         PlexServer("http://plex:32400", "")
+
+
+_MATCHES = {
+    "MediaContainer": {
+        "SearchResult": [
+            {"name": "Mars", "year": 2026, "guid": "plex://movie/aaa"},
+            {"name": "Mars", "year": 2024, "guid": "plex://movie/bbb"},
+            {"name": "Ado: MARS", "year": 2024, "guid": "plex://movie/ccc"},
+        ]
+    }
+}
+
+
+def _mars_mismatch() -> Mismatch:
+    return Mismatch(
+        item_id="43157",
+        path="/x/Mars.2024.mkv",
+        is_movie=True,
+        current_name="Mars",
+        current_year=2026,
+        current_id="tmdb:916588",
+        proposed_title='"MARS"',
+        proposed_year=2024,
+        proposed_id="tmdb:1545737",
+        confidence=Confidence.HIGH,
+        rationale="r",
+    )
+
+
+def test_apply_plex_fix_picks_exact_match_and_puts() -> None:
+    seen: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/matches"):
+            return httpx.Response(200, json=_MATCHES)
+        if request.url.path.endswith("/match") and request.method == "PUT":
+            seen["guid"] = request.url.params.get("guid")
+            return httpx.Response(200, json={"MediaContainer": {}})
+        return httpx.Response(404, json={})
+
+    report = apply_plex_fixes(_server(handler), [_mars_mismatch()])
+    assert report.applied == 1 and report.skipped == 0
+    assert seen["guid"] == "plex://movie/bbb"  # the Mars 2024 = tmdb:1545737 one
+
+
+def test_ambiguous_candidates_are_skipped() -> None:
+    matches = {
+        "MediaContainer": {
+            "SearchResult": [
+                {"name": "Mars", "year": 2024, "guid": "plex://movie/bbb"},
+                {"name": "Mars", "year": 2024, "guid": "plex://movie/ddd"},
+            ]
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/matches"):
+            return httpx.Response(200, json=matches)
+        return httpx.Response(200, json={"MediaContainer": {}})
+
+    report = apply_plex_fixes(_server(handler), [_mars_mismatch()])
+    assert report.applied == 0 and report.skipped == 1
+
+
+def test_dry_run_does_not_put() -> None:
+    puts: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/matches"):
+            return httpx.Response(200, json=_MATCHES)
+        if request.method == "PUT":
+            puts.append(1)
+        return httpx.Response(200, json={"MediaContainer": {}})
+
+    report = apply_plex_fixes(_server(handler), [_mars_mismatch()], dry_run=True)
+    assert report.applied == 1 and puts == []
